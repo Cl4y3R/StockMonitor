@@ -117,9 +117,10 @@
       <!-- Search & Add Header -->
       <div class="p-3.5 border-b border-slate-200/80 dark:border-slate-800/80 space-y-2.5">
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold">自选标的</h2>
-            <span id="watchlistCount" class="px-1.5 py-0.5 text-[11px] font-mono rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">8</span>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <h2 class="text-sm font-semibold shrink-0">自选标的</h2>
+            <span id="watchlistCount" class="px-1.5 py-0.5 text-[11px] font-mono rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">8</span>
+            <button id="searchModeBadge" type="button" title="点击配置联网搜索数据源" class="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 hover:text-blue-600 dark:hover:text-blue-300 transition-colors truncate">仅本地搜索</button>
           </div>
           <select id="sortWatchlistSelect" aria-label="排序方式" class="text-xs rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1 text-slate-600 dark:text-slate-300 focus:outline-none">
             <option value="custom">默认排序</option>
@@ -369,20 +370,32 @@
         </button>
       </div>
       <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-        默认采用已核验的美股基准实盘快照（支持实时模拟刷新与夜盘价差）。如需直连交易所实时行情，可填入免费的 <strong>Finnhub</strong> 或 <strong>Twelve Data</strong> API Key（仅保存在本地浏览器）。
+        默认采用内置基准实盘快照（仅检索本地标的）。接入免费的 <strong>Finnhub</strong>、<strong>Twelve Data</strong> API Key，或配置 <strong>Cloudflare Worker 代理</strong> 后，即可开启<strong>全美股实时联网搜索</strong>、自动拉取真实报价、财报指标与 5 年日 K 线（配置仅保存在本地浏览器）。
       </p>
       <div class="space-y-3">
         <div>
           <label for="apiProviderSelect" class="block text-xs font-medium mb-1">数据源模式</label>
           <select id="apiProviderSelect" class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="snapshot">内置实盘基准快照 + 实时模拟波动 (免Key)</option>
-            <option value="finnhub">Finnhub 实时行情 API (CORS直连)</option>
-            <option value="twelvedata">Twelve Data 实时行情 API (支持盘前盘后)</option>
+            <option value="snapshot">内置实盘基准快照 + 实时模拟波动 (免Key · 仅本地搜索)</option>
+            <option value="finnhub">Finnhub 实时行情与联网搜索 (免费 Key · 含财报基本面)</option>
+            <option value="twelvedata">Twelve Data 实时行情与联网搜索 (免费 Key · 含真实5年K线)</option>
+            <option value="proxy">Cloudflare Worker 代理 (免Key · 全美股搜+真实5年K线+盘前盘后)</option>
           </select>
         </div>
         <div id="apiKeyInputWrap" class="hidden">
           <label for="apiKeyInput" class="block text-xs font-medium mb-1">API Key</label>
           <input id="apiKeyInput" type="password" placeholder="粘贴你的 Finnhub / Twelve Data API Key" class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <p id="apiKeyHint" class="text-[11px] text-slate-400 mt-1">支持自选栏实时联网搜索美股/ETF，添加后自动拉取真实行情。</p>
+        </div>
+        <div id="proxyUrlInputWrap" class="hidden space-y-2">
+          <div>
+            <label for="proxyUrlInput" class="block text-xs font-medium mb-1">Cloudflare Worker 地址 (HTTPS)</label>
+            <input id="proxyUrlInput" type="url" placeholder="https://us-stock-proxy.你的子域名.workers.dev" class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 p-2.5 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 dark:text-slate-400">还没有部署 Worker？复制配套免费代理脚本到 Cloudflare Workers 即可。</span>
+            <button id="copyWorkerCodeBtn" type="button" class="shrink-0 px-2.5 py-1 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-blue-600 hover:text-white text-[11px] font-medium transition-colors">复制脚本</button>
+          </div>
         </div>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
@@ -615,6 +628,7 @@
       autoRefreshSec: 0,
       apiProvider: 'snapshot',
       apiKey: '',
+      proxyUrl: '',
       customValuation: {}, // { [symbol]: { growth, wacc, termPe } }
       customStocks: {},    // user-added tickers not in STOCK_CATALOG
       lastUpdated: new Date()
@@ -625,6 +639,124 @@
     let autoRefreshTimer = null;
     let lastDeleted = null;
     let toastTimer = null;
+    let searchDebounceTimer = null;
+    let searchRequestId = 0;
+    let searchAbortController = null;
+    const onlineSearchCache = {};
+    const pendingSearchMeta = {};
+    const hydratingSymbols = new Set();
+
+    const WORKER_PROXY_TEMPLATE = [
+      'export default {',
+      '  async fetch(request) {',
+      '    const cors = {',
+      '      "Access-Control-Allow-Origin": "*",',
+      '      "Access-Control-Allow-Methods": "GET, OPTIONS",',
+      '      "Access-Control-Allow-Headers": "Content-Type",',
+      '      "Content-Type": "application/json; charset=utf-8"',
+      '    };',
+      '    if (request.method === "OPTIONS") return new Response(null, { headers: cors });',
+      '    const url = new URL(request.url);',
+      '    const path = url.pathname;',
+      '    const ua = { "User-Agent": "Mozilla/5.0" };',
+      '    try {',
+      '      if (path === "/search") {',
+      '        const q = (url.searchParams.get("q") || "").trim();',
+      '        if (!q) return new Response(JSON.stringify({ results: [] }), { headers: cors });',
+      '        const r = await fetch("https://query1.finance.yahoo.com/v1/finance/search?q=" + encodeURIComponent(q) + "&quotesCount=10&newsCount=0", { headers: ua });',
+      '        const d = await r.json();',
+      '        const results = (d.quotes || []).filter(x => x.symbol && (x.quoteType === "EQUITY" || x.quoteType === "ETF")).map(x => ({',
+      '          symbol: x.symbol, name: x.longname || x.shortname || x.symbol, exchange: x.exchDisp || x.exchange || "US", type: x.quoteType || "EQUITY"',
+      '        }));',
+      '        return new Response(JSON.stringify({ results }), { headers: cors });',
+      '      }',
+      '      if (path === "/quote") {',
+      '        const sym = (url.searchParams.get("symbol") || "").trim().toUpperCase();',
+      '        const r = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(sym) + "?range=5d&interval=1d&includePrePost=true", { headers: ua });',
+      '        const d = await r.json();',
+      '        const meta = d?.chart?.result?.[0]?.meta || {};',
+      '        return new Response(JSON.stringify({',
+      '          symbol: sym, name: meta.longName || meta.shortName || sym, exchange: meta.exchangeName || "US",',
+      '          price: meta.regularMarketPrice, prevClose: meta.chartPreviousClose || meta.previousClose,',
+      '          open: meta.regularMarketOpen, high: meta.regularMarketDayHigh, low: meta.regularMarketDayLow,',
+      '          high52: meta.fiftyTwoWeekHigh, low52: meta.fiftyTwoWeekLow, volume: meta.regularMarketVolume,',
+      '          overnightPrice: meta.postMarketPrice || meta.preMarketPrice || meta.regularMarketPrice,',
+      '          isEtf: meta.instrumentType === "ETF"',
+      '        }), { headers: cors });',
+      '      }',
+      '      if (path === "/chart") {',
+      '        const sym = (url.searchParams.get("symbol") || "").trim().toUpperCase();',
+      '        const r = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(sym) + "?range=5y&interval=1d", { headers: ua });',
+      '        const d = await r.json();',
+      '        const res = d?.chart?.result?.[0];',
+      '        const ts = res?.timestamp || [];',
+      '        const q = res?.indicators?.quote?.[0] || {};',
+      '        const bars = [];',
+      '        for (let i = 0; i < ts.length; i++) {',
+      '          if (q.open?.[i] != null && q.close?.[i] != null && q.low?.[i] != null && q.high?.[i] != null) {',
+      '            bars.push({ date: new Date(ts[i] * 1000).toISOString().slice(0, 10), open: q.open[i], close: q.close[i], low: q.low[i], high: q.high[i], volume: q.volume?.[i] || 0 });',
+      '          }',
+      '        }',
+      '        return new Response(JSON.stringify({ symbol: sym, bars }), { headers: cors });',
+      '      }',
+      '      return new Response(JSON.stringify({ ok: true, endpoints: ["/search?q=", "/quote?symbol=", "/chart?symbol="] }), { headers: cors });',
+      '    } catch (e) {',
+      '      return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: cors });',
+      '    }',
+      '  }',
+      '};'
+    ].join('\n');
+
+    function getCleanProxyUrl() {
+      const raw = (state.proxyUrl || '').trim().replace(/\/+$/, '');
+      return /^https:\/\//i.test(raw) ? raw : '';
+    }
+
+    function isLiveSearchEnabled() {
+      if (state.apiProvider === 'finnhub' && state.apiKey) return true;
+      if (state.apiProvider === 'twelvedata' && state.apiKey) return true;
+      if (state.apiProvider === 'proxy' && getCleanProxyUrl()) return true;
+      return false;
+    }
+
+    function calcMovingAverages(closes) {
+      const calcMA = (period) => closes.map((_, i) => {
+        if (i < period - 1) return null;
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += closes[i - j];
+        return Number((sum / period).toFixed(2));
+      });
+      return { ma5: calcMA(5), ma20: calcMA(20), ma60: calcMA(60), ma200: calcMA(200) };
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
+    function copyTextToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+      }
+      return fallbackCopy(text);
+    }
+
+    function fallbackCopy(text) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve();
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
 
     function loadState() {
       try {
@@ -638,6 +770,7 @@
         if (typeof parsed.useOvernightForValuation === 'boolean') state.useOvernightForValuation = parsed.useOvernightForValuation;
         if (parsed.apiProvider) state.apiProvider = parsed.apiProvider;
         if (parsed.apiKey) state.apiKey = parsed.apiKey;
+        if (parsed.proxyUrl) state.proxyUrl = parsed.proxyUrl;
         if (parsed.customValuation) state.customValuation = parsed.customValuation;
         if (parsed.customStocks) {
           state.customStocks = parsed.customStocks;
@@ -661,6 +794,7 @@
           useOvernightForValuation: state.useOvernightForValuation,
           apiProvider: state.apiProvider,
           apiKey: state.apiKey,
+          proxyUrl: state.proxyUrl,
           customValuation: state.customValuation,
           customStocks: state.customStocks
         }));
@@ -984,12 +1118,23 @@
       }
 
       const modeEl = document.getElementById('dataModeText');
+      const searchBadge = document.getElementById('searchModeBadge');
       if (state.apiProvider === 'finnhub' && state.apiKey) {
-        modeEl.textContent = '实时 API 模式 (Finnhub)';
+        modeEl.textContent = '实时 API 模式 (Finnhub · 联网搜索已开启)';
+        searchBadge.textContent = '联网搜索 · Finnhub';
+        searchBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-500/30 transition-colors truncate';
       } else if (state.apiProvider === 'twelvedata' && state.apiKey) {
-        modeEl.textContent = '实时 API 模式 (Twelve Data)';
+        modeEl.textContent = '实时 API 模式 (Twelve Data · 联网搜索已开启)';
+        searchBadge.textContent = '联网搜索 · Twelve Data';
+        searchBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-500/30 transition-colors truncate';
+      } else if (state.apiProvider === 'proxy' && getCleanProxyUrl()) {
+        modeEl.textContent = '实时代理模式 (Cloudflare Worker · 全美股联网)';
+        searchBadge.textContent = '联网搜索 · Proxy';
+        searchBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-500/30 transition-colors truncate';
       } else {
         modeEl.textContent = '基准实盘快照 · 实时夜盘模拟';
+        searchBadge.textContent = '仅本地搜索 · 去开启';
+        searchBadge.className = 'px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 hover:text-blue-600 dark:hover:text-blue-300 transition-colors truncate';
       }
     }
 
@@ -1000,46 +1145,93 @@
       let usedLiveApi = false;
       let liveError = false;
 
-      if (state.apiKey && (state.apiProvider === 'finnhub' || state.apiProvider === 'twelvedata')) {
+      const proxyBase = getCleanProxyUrl();
+      if (isLiveSearchEnabled()) {
         try {
-          const targets = state.watchlist.slice(0, 12);
-          await Promise.all(targets.map(async (sym) => {
-            const s = STOCK_CATALOG[sym];
-            if (!s) return;
-            if (state.apiProvider === 'finnhub') {
-              const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(state.apiKey)}`);
-              if (!res.ok) throw new Error('HTTP ' + res.status);
-              const data = await res.json();
-              if (data && data.c > 0) {
-                s.price = Number(data.c.toFixed(2));
-                if (data.pc > 0) s.prevClose = Number(data.pc.toFixed(2));
-                if (data.h > 0) s.high = Number(data.h.toFixed(2));
-                if (data.l > 0) s.low = Number(data.l.toFixed(2));
-                // Derive overnight spread when extended quote isn't split
-                const spread = (Math.random() - 0.48) * 0.004 * s.price;
-                s.overnightPrice = Number((s.price + spread).toFixed(2));
-                s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
-                s.overnightPct = Number(((s.overnightChange / s.price) * 100).toFixed(2));
-                usedLiveApi = true;
-              }
-            } else if (state.apiProvider === 'twelvedata') {
-              const res = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(state.apiKey)}`);
-              if (!res.ok) throw new Error('HTTP ' + res.status);
-              const data = await res.json();
-              if (data && data.close) {
-                const c = parseFloat(data.close);
-                if (!isNaN(c) && c > 0) {
-                  s.price = Number(c.toFixed(2));
-                  if (data.previous_close) s.prevClose = Number(parseFloat(data.previous_close).toFixed(2));
-                  const ext = data.extended_price ? parseFloat(data.extended_price) : s.price * (1 + (Math.random() - 0.48) * 0.004);
-                  s.overnightPrice = Number(ext.toFixed(2));
+          const targets = [...state.watchlist];
+          const chunkSize = 6;
+          for (let i = 0; i < targets.length; i += chunkSize) {
+            const batch = targets.slice(i, i + chunkSize);
+            await Promise.all(batch.map(async (sym) => {
+              const s = STOCK_CATALOG[sym];
+              if (!s) return;
+              const prevReg = s.price;
+              const prevOn = s.overnightPrice;
+              if (state.apiProvider === 'finnhub') {
+                const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(state.apiKey)}`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (data && data.c > 0) {
+                  s.price = Number(data.c.toFixed(2));
+                  if (data.pc > 0) s.prevClose = Number(data.pc.toFixed(2));
+                  if (data.o > 0) s.open = Number(data.o.toFixed(2));
+                  if (data.h > 0) s.high = Number(data.h.toFixed(2));
+                  if (data.l > 0) s.low = Number(data.l.toFixed(2));
+                  const spread = (Math.random() - 0.48) * 0.004 * s.price;
+                  s.overnightPrice = Number((s.price + spread).toFixed(2));
                   s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
                   s.overnightPct = Number(((s.overnightChange / s.price) * 100).toFixed(2));
+                  s._regDir = s.price >= prevReg ? 'up' : 'down';
+                  s._onDir = s.overnightPrice >= prevOn ? 'up' : 'down';
+                  usedLiveApi = true;
+                }
+              } else if (state.apiProvider === 'twelvedata') {
+                const res = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(state.apiKey)}`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (data && data.close) {
+                  const c = parseFloat(data.close);
+                  if (!isNaN(c) && c > 0) {
+                    s.price = Number(c.toFixed(2));
+                    if (data.previous_close) s.prevClose = Number(parseFloat(data.previous_close).toFixed(2));
+                    if (data.open) s.open = Number(parseFloat(data.open).toFixed(2));
+                    if (data.high) s.high = Number(parseFloat(data.high).toFixed(2));
+                    if (data.low) s.low = Number(parseFloat(data.low).toFixed(2));
+                    if (data.volume) s.volume = parseInt(data.volume, 10) || s.volume;
+                    const ext = data.extended_price ? parseFloat(data.extended_price) : s.price * (1 + (Math.random() - 0.48) * 0.004);
+                    s.overnightPrice = Number(ext.toFixed(2));
+                    s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
+                    s.overnightPct = Number(((s.overnightChange / s.price) * 100).toFixed(2));
+                    s._regDir = s.price >= prevReg ? 'up' : 'down';
+                    s._onDir = s.overnightPrice >= prevOn ? 'up' : 'down';
+                    usedLiveApi = true;
+                  }
+                }
+              } else if (state.apiProvider === 'proxy' && proxyBase) {
+                const proxyQuoteUrl = proxyBase + '/quote?symbol=' + encodeURIComponent(sym);
+                const res = await fetch(proxyQuoteUrl);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (data && data.price > 0) {
+                  s.price = Number(Number(data.price).toFixed(2));
+                  if (data.prevClose > 0) s.prevClose = Number(Number(data.prevClose).toFixed(2));
+                  if (data.open > 0) s.open = Number(Number(data.open).toFixed(2));
+                  if (data.high > 0) s.high = Number(Number(data.high).toFixed(2));
+                  if (data.low > 0) s.low = Number(Number(data.low).toFixed(2));
+                  if (data.high52 > 0) s.high52 = Number(Number(data.high52).toFixed(2));
+                  if (data.low52 > 0) s.low52 = Number(Number(data.low52).toFixed(2));
+                  if (data.volume > 0) s.volume = data.volume;
+                  const onP = data.overnightPrice > 0 ? Number(data.overnightPrice) : s.price;
+                  s.overnightPrice = Number(onP.toFixed(2));
+                  s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
+                  s.overnightPct = s.price > 0 ? Number(((s.overnightChange / s.price) * 100).toFixed(2)) : 0;
+                  s._regDir = s.price >= prevReg ? 'up' : 'down';
+                  s._onDir = s.overnightPrice >= prevOn ? 'up' : 'down';
                   usedLiveApi = true;
                 }
               }
-            }
-          }));
+              if (klineCache[sym] && s.price > 0) {
+                const k = klineCache[sym];
+                const last = k.ohlc[k.ohlc.length - 1];
+                if (last) {
+                  last[1] = s.price;
+                  last[2] = Math.min(last[2], s.price);
+                  last[3] = Math.max(last[3], s.price);
+                }
+              }
+            }));
+          }
+          if (usedLiveApi) saveState();
         } catch (err) {
           liveError = true;
         }
@@ -1169,21 +1361,211 @@
       }).join('');
     }
 
-    function addToWatchlist(sym) {
+    async function hydrateStockData(sym) {
+      const s = STOCK_CATALOG[sym];
+      if (!s || !isLiveSearchEnabled() || hydratingSymbols.has(sym)) return;
+      hydratingSymbols.add(sym);
+      const proxyBase = getCleanProxyUrl();
+      let updated = false;
+
+      try {
+        if (state.apiProvider === 'finnhub' && state.apiKey) {
+          const tok = encodeURIComponent(state.apiKey);
+          const encSym = encodeURIComponent(sym);
+          const [qRes, pRes, mRes] = await Promise.allSettled([
+            fetch(`https://finnhub.io/api/v1/quote?symbol=${encSym}&token=${tok}`).then(r => r.ok ? r.json() : null),
+            fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encSym}&token=${tok}`).then(r => r.ok ? r.json() : null),
+            fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${encSym}&metric=all&token=${tok}`).then(r => r.ok ? r.json() : null)
+          ]);
+
+          if (qRes.status === 'fulfilled' && qRes.value && qRes.value.c > 0) {
+            const q = qRes.value;
+            s.price = Number(q.c.toFixed(2));
+            if (q.pc > 0) s.prevClose = Number(q.pc.toFixed(2));
+            if (q.o > 0) s.open = Number(q.o.toFixed(2));
+            if (q.h > 0) s.high = Number(q.h.toFixed(2));
+            if (q.l > 0) s.low = Number(q.l.toFixed(2));
+            s.overnightPrice = s.price;
+            s.overnightChange = 0;
+            s.overnightPct = 0;
+            updated = true;
+          }
+          if (pRes.status === 'fulfilled' && pRes.value && pRes.value.name) {
+            const p = pRes.value;
+            s.name = p.name;
+            if (p.exchange) s.exchange = p.exchange.replace(/NMS|NASD.*/i, 'NASDAQ').replace(/NYQ|NEW YORK.*/i, 'NYSE').slice(0, 12);
+            if (p.finnhubIndustry) s.sector = p.finnhubIndustry;
+            if (p.marketCapitalization > 0) s.marketCap = Number((p.marketCapitalization / 1000).toFixed(2));
+            updated = true;
+          }
+          if (mRes.status === 'fulfilled' && mRes.value && mRes.value.metric) {
+            const m = mRes.value.metric;
+            if (typeof m.epsTTM === 'number') s.eps = Number(m.epsTTM.toFixed(2));
+            if (typeof m.peTTM === 'number' && m.peTTM > 0) s.pe = Number(m.peTTM.toFixed(2));
+            if (typeof m['52WeekHigh'] === 'number' && m['52WeekHigh'] > 0) s.high52 = Number(m['52WeekHigh'].toFixed(2));
+            if (typeof m['52WeekLow'] === 'number' && m['52WeekLow'] > 0) s.low52 = Number(m['52WeekLow'].toFixed(2));
+            if (typeof m.dividendYieldIndicatedAnnual === 'number') s.divYield = Number(m.dividendYieldIndicatedAnnual.toFixed(2));
+            if (typeof m['10DayAverageTradingVolume'] === 'number' && m['10DayAverageTradingVolume'] > 0) {
+              s.avgVolume = Math.round(m['10DayAverageTradingVolume'] * 1e6);
+              s.volume = s.avgVolume;
+            }
+            updated = true;
+          }
+          if (updated && s.isCustom) {
+            const lo = s.low52 || s.price * 0.72;
+            const hi = s.high52 || s.price * 1.24;
+            s.anchors = Array.from({ length: 37 }, (_, i) => {
+              const w = i / 36;
+              const base = lo + (s.price - lo) * Math.pow(w, 0.85);
+              const wave = Math.sin(i * 0.55) * (hi - lo) * 0.08 * (1 - w * 0.5);
+              return Number(Math.max(0.5, base + wave).toFixed(2));
+            });
+            s.anchors[36] = s.price;
+            delete klineCache[sym];
+            s.earningsPeriod = 'Finnhub 实盘基本面';
+            s.analystConsensus = s.eps > 0 ? 'Finnhub 实时数据已同步' : '盈利承压 · 建议结合财报判断';
+            s.summary = `${s.name} (${sym}) 已通过 Finnhub 联网同步最新实盘报价与 TTM 财报指标（当前股价 $${s.price.toFixed(2)}，52 周区间 $${s.low52.toFixed(2)}–$${s.high52.toFixed(2)}）。注：Finnhub 免费版不含 5 年历史日线，K 线已按实盘现价与 52 周高低点重锚；如需真实 5 年历史日 K 线可切换至 Twelve Data 或代理模式。`;
+          }
+        } else if (state.apiProvider === 'twelvedata' && state.apiKey) {
+          const key = encodeURIComponent(state.apiKey);
+          const encSym = encodeURIComponent(sym);
+          const [qRes, tsRes] = await Promise.allSettled([
+            fetch(`https://api.twelvedata.com/quote?symbol=${encSym}&apikey=${key}`).then(r => r.ok ? r.json() : null),
+            fetch(`https://api.twelvedata.com/time_series?symbol=${encSym}&interval=1day&outputsize=1260&apikey=${key}`).then(r => r.ok ? r.json() : null)
+          ]);
+
+          if (qRes.status === 'fulfilled' && qRes.value && qRes.value.close) {
+            const q = qRes.value;
+            const c = parseFloat(q.close);
+            if (!isNaN(c) && c > 0) {
+              s.price = Number(c.toFixed(2));
+              if (q.name) s.name = q.name;
+              if (q.exchange) s.exchange = q.exchange;
+              if (q.previous_close) s.prevClose = Number(parseFloat(q.previous_close).toFixed(2));
+              if (q.open) s.open = Number(parseFloat(q.open).toFixed(2));
+              if (q.high) s.high = Number(parseFloat(q.high).toFixed(2));
+              if (q.low) s.low = Number(parseFloat(q.low).toFixed(2));
+              if (q.volume) s.volume = parseInt(q.volume, 10) || s.volume;
+              if (q.average_volume) s.avgVolume = parseInt(q.average_volume, 10) || s.avgVolume;
+              if (q.fifty_two_week) {
+                const h52 = parseFloat(q.fifty_two_week.high);
+                const l52 = parseFloat(q.fifty_two_week.low);
+                if (!isNaN(h52) && h52 > 0) s.high52 = Number(h52.toFixed(2));
+                if (!isNaN(l52) && l52 > 0) s.low52 = Number(l52.toFixed(2));
+              }
+              const ext = q.extended_price ? parseFloat(q.extended_price) : s.price;
+              s.overnightPrice = Number((!isNaN(ext) && ext > 0 ? ext : s.price).toFixed(2));
+              s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
+              s.overnightPct = s.price > 0 ? Number(((s.overnightChange / s.price) * 100).toFixed(2)) : 0;
+              updated = true;
+            }
+          }
+          if (tsRes.status === 'fulfilled' && tsRes.value && Array.isArray(tsRes.value.values) && tsRes.value.values.length > 20) {
+            const rows = [...tsRes.value.values].reverse();
+            const dates = [];
+            const ohlc = [];
+            const vols = [];
+            const closes = [];
+            rows.forEach(r => {
+              const o = parseFloat(r.open), c = parseFloat(r.close), l = parseFloat(r.low), h = parseFloat(r.high);
+              if (!isNaN(o) && !isNaN(c) && !isNaN(l) && !isNaN(h)) {
+                dates.push(String(r.datetime).slice(0, 10));
+                ohlc.push([Number(o.toFixed(2)), Number(c.toFixed(2)), Number(l.toFixed(2)), Number(h.toFixed(2))]);
+                vols.push(parseInt(r.volume, 10) || 0);
+                closes.push(Number(c.toFixed(2)));
+              }
+            });
+            if (dates.length > 20) {
+              const mas = calcMovingAverages(closes);
+              klineCache[sym] = { dates, ohlc, vols, closes, ...mas, isRealKline: true };
+              updated = true;
+            }
+          }
+          if (updated && s.isCustom) {
+            s.earningsPeriod = 'Twelve Data 实盘行情';
+            s.summary = `${s.name} (${sym}) 已通过 Twelve Data 联网拉取真实报价与历史 5 年日 K 线（当前 $${s.price.toFixed(2)}，52 周区间 $${s.low52.toFixed(2)}–$${s.high52.toFixed(2)}）。你可拖动下方估值滑块微调增速与折现率假设。`;
+          }
+        } else if (state.apiProvider === 'proxy' && proxyBase) {
+          const encSym = encodeURIComponent(sym);
+          const [qRes, cRes] = await Promise.allSettled([
+            fetch(proxyBase + '/quote?symbol=' + encSym).then(r => r.ok ? r.json() : null),
+            fetch(proxyBase + '/chart?symbol=' + encSym + '&range=5y&interval=1d').then(r => r.ok ? r.json() : null)
+          ]);
+
+          if (qRes.status === 'fulfilled' && qRes.value && qRes.value.price > 0) {
+            const q = qRes.value;
+            if (q.name) s.name = q.name;
+            if (q.exchange) s.exchange = q.exchange;
+            if (typeof q.isEtf === 'boolean') s.isEtf = q.isEtf;
+            s.price = Number(Number(q.price).toFixed(2));
+            if (q.prevClose > 0) s.prevClose = Number(Number(q.prevClose).toFixed(2));
+            if (q.open > 0) s.open = Number(Number(q.open).toFixed(2));
+            if (q.high > 0) s.high = Number(Number(q.high).toFixed(2));
+            if (q.low > 0) s.low = Number(Number(q.low).toFixed(2));
+            if (q.high52 > 0) s.high52 = Number(Number(q.high52).toFixed(2));
+            if (q.low52 > 0) s.low52 = Number(Number(q.low52).toFixed(2));
+            if (q.volume > 0) s.volume = q.volume;
+            if (q.avgVolume > 0) s.avgVolume = q.avgVolume;
+            if (q.marketCap > 0) s.marketCap = q.marketCap;
+            if (typeof q.eps === 'number') s.eps = Number(q.eps.toFixed(2));
+            if (typeof q.pe === 'number' && q.pe > 0) s.pe = Number(q.pe.toFixed(2));
+            const onP = q.overnightPrice > 0 ? Number(q.overnightPrice) : s.price;
+            s.overnightPrice = Number(onP.toFixed(2));
+            s.overnightChange = Number((s.overnightPrice - s.price).toFixed(2));
+            s.overnightPct = s.price > 0 ? Number(((s.overnightChange / s.price) * 100).toFixed(2)) : 0;
+            updated = true;
+          }
+          if (cRes.status === 'fulfilled' && cRes.value && Array.isArray(cRes.value.bars) && cRes.value.bars.length > 20) {
+            const dates = [], ohlc = [], vols = [], closes = [];
+            cRes.value.bars.forEach(b => {
+              dates.push(b.date);
+              ohlc.push([Number(b.open.toFixed(2)), Number(b.close.toFixed(2)), Number(b.low.toFixed(2)), Number(b.high.toFixed(2))]);
+              vols.push(b.volume || 0);
+              closes.push(Number(b.close.toFixed(2)));
+            });
+            const mas = calcMovingAverages(closes);
+            klineCache[sym] = { dates, ohlc, vols, closes, ...mas, isRealKline: true };
+            updated = true;
+          }
+          if (updated && s.isCustom) {
+            s.earningsPeriod = 'Yahoo 代理实盘';
+            s.summary = `${s.name} (${sym}) 已通过自定义代理联网同步真实常规盘/盘后报价与 5 年真实日 K 线（当前 $${s.price.toFixed(2)}）。`;
+          }
+        }
+
+        if (updated) {
+          s.hydratedLive = true;
+          if (s.isCustom) state.customStocks[sym] = s;
+          saveState();
+          renderAll(true);
+          showToast(`已联网同步 ${sym} 真实行情数据`);
+        }
+      } catch (err) {
+        showToast(`${sym} 联网同步失败，当前显示本地估算值`);
+      } finally {
+        hydratingSymbols.delete(sym);
+      }
+    }
+
+    function addToWatchlist(sym, meta = null) {
       const upper = sym.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
       if (!upper) return;
+      const resolvedMeta = meta || pendingSearchMeta[upper] || null;
 
       if (!STOCK_CATALOG[upper]) {
-        // Create a custom ticker entry so user can track any US stock symbol
         const seedPrice = Number((50 + (hashSeed(upper) % 250) + 0.45).toFixed(2));
         const baseAnchors = Array.from({ length: 37 }, (_, i) => Number((seedPrice * (0.65 + (i / 36) * 0.35 + Math.sin(i * 0.6) * 0.08)).toFixed(2)));
         baseAnchors[36] = seedPrice;
+        const isEtf = Boolean(resolvedMeta && /ETF|ETP|FUND/i.test(resolvedMeta.type || ''));
         const customStock = {
           symbol: upper,
-          name: `${upper} Corp (Custom)`,
-          cnName: '自定义标的',
-          exchange: 'US',
-          sector: '美股自定义',
+          name: (resolvedMeta && resolvedMeta.name) ? resolvedMeta.name : `${upper} Corp (Custom)`,
+          cnName: isEtf ? '美股 ETF' : (resolvedMeta ? '联网检索标的' : '自定义标的'),
+          exchange: (resolvedMeta && resolvedMeta.exchange) ? resolvedMeta.exchange : 'US',
+          sector: isEtf ? 'ETF / 指数基金' : '美股标的',
+          isEtf,
+          isCustom: true,
+          hydratedLive: false,
           price: seedPrice,
           prevClose: Number((seedPrice * 0.992).toFixed(2)),
           open: Number((seedPrice * 0.995).toFixed(2)),
@@ -1197,17 +1579,19 @@
           volume: 8500000,
           avgVolume: 8000000,
           marketCap: 45.0,
-          eps: Number((seedPrice / 22).toFixed(2)),
-          pe: 22.0,
+          eps: isEtf ? null : Number((seedPrice / 22).toFixed(2)),
+          pe: isEtf ? null : 22.0,
           divYield: 0.50,
           defaultGrowth: 11.0,
           defaultWacc: 9.5,
           defaultTermPe: 20,
-          earningsPeriod: '自定义参数',
+          earningsPeriod: isLiveSearchEnabled() ? '正在同步实盘...' : '自定义参数',
           earningsScore: 62,
           sentimentScore: 60,
-          analystConsensus: 'Hold (建议接入API获取实时财报)',
-          summary: `${upper} 为自定义添加的美股标的。当前显示基准估算模型，你可以在右上角设置中填入 Finnhub / Twelve Data API Key 获取实时交易所报价，或拖动下方估值滑块自定义内在价值假设。`,
+          analystConsensus: isLiveSearchEnabled() ? '正在拉取实时数据...' : 'Hold (建议在设置中接入API获取实时数据)',
+          summary: isLiveSearchEnabled()
+            ? `正在通过已配置的数据源联网拉取 ${upper} 的真实报价与基本面数据...`
+            : `${upper} 为自定义添加的美股标的。当前显示基准估算模型，你可以在右上角设置中填入 Finnhub / Twelve Data API Key 或代理地址开启联网同步。`,
           anchors: baseAnchors
         };
         STOCK_CATALOG[upper] = customStock;
@@ -1216,7 +1600,7 @@
 
       if (!state.watchlist.includes(upper)) {
         state.watchlist.unshift(upper);
-        showToast(`已添加 ${upper} 到自选栏`);
+        showToast(isLiveSearchEnabled() ? `已添加 ${upper}，正在联网同步行情...` : `已添加 ${upper} 到自选栏`);
       } else {
         showToast(`${upper} 已在自选栏中，已为你切换`);
       }
@@ -1225,6 +1609,10 @@
       saveState();
       closeSearchDropdown();
       renderAll();
+
+      if (isLiveSearchEnabled() && !STOCK_CATALOG[upper].hydratedLive) {
+        hydrateStockData(upper);
+      }
     }
 
     function removeFromWatchlist(sym) {
@@ -1247,58 +1635,202 @@
       });
     }
 
-    function renderSearchDropdown(query) {
-      const dropdown = document.getElementById('searchDropdown');
-      const q = query.trim().toLowerCase();
-      if (!q) {
-        dropdown.classList.add('hidden');
-        return;
+    async function fetchOnlineSearchResults(query, signal) {
+      const cacheKey = `${state.apiProvider}:${query.toLowerCase()}`;
+      if (onlineSearchCache[cacheKey]) return onlineSearchCache[cacheKey];
+
+      let results = [];
+      try {
+      if (state.apiProvider === 'finnhub' && state.apiKey) {
+        const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${encodeURIComponent(state.apiKey)}`, { signal });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const raw = Array.isArray(data.result) ? data.result : [];
+        const seen = new Set();
+        results = raw
+          .filter(item => {
+            const sym = (item.displaySymbol || item.symbol || '').trim();
+            if (!sym || sym.includes(':') || (sym.includes('.') && !/^[A-Z]+\.[AB]$/.test(sym))) return false;
+            if (seen.has(sym)) return false;
+            seen.add(sym);
+            return true;
+          })
+          .slice(0, 8)
+          .map(item => ({
+            symbol: (item.displaySymbol || item.symbol).toUpperCase(),
+            name: item.description || item.symbol,
+            exchange: 'US',
+            type: item.type || 'Stock',
+            source: 'Finnhub'
+          }));
+      } else if (state.apiProvider === 'twelvedata' && state.apiKey) {
+        const res = await fetch(`https://api.twelvedata.com/symbol_search?symbol=${encodeURIComponent(query)}&apikey=${encodeURIComponent(state.apiKey)}`, { signal });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const raw = Array.isArray(data.data) ? data.data : [];
+        const seen = new Set();
+        results = raw
+          .filter(item => {
+            const sym = (item.symbol || '').trim().toUpperCase();
+            if (!sym || seen.has(sym)) return false;
+            const isUS = item.country === 'United States' || /^(NASDAQ|NYSE|NYSE Arca|AMEX|BATS)$/i.test(item.exchange || '');
+            if (!isUS) return false;
+            seen.add(sym);
+            return true;
+          })
+          .slice(0, 8)
+          .map(item => ({
+            symbol: item.symbol.toUpperCase(),
+            name: item.instrument_name || item.symbol,
+            exchange: item.exchange || 'US',
+            type: item.instrument_type || 'Stock',
+            source: 'Twelve Data'
+          }));
+      } else if (state.apiProvider === 'proxy') {
+        const proxyBase = getCleanProxyUrl();
+        if (!proxyBase) throw new Error('Invalid proxy URL');
+        const proxySearchUrl = proxyBase + '/search?q=' + encodeURIComponent(query);
+        const res = await fetch(proxySearchUrl, { signal });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const raw = Array.isArray(data.results) ? data.results : [];
+        results = raw.slice(0, 8).map(item => ({
+          symbol: String(item.symbol || '').toUpperCase(),
+          name: item.name || item.symbol,
+          exchange: item.exchange || 'US',
+          type: item.type || 'EQUITY',
+          source: 'Proxy'
+        }));
       }
 
+      results.forEach(r => { pendingSearchMeta[r.symbol] = r; });
+      onlineSearchCache[cacheKey] = results;
+      return results;
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    function buildDropdownMarkup(query, onlineState = { status: 'idle', items: [], error: '' }) {
+      const q = query.trim().toLowerCase();
       const matches = Object.values(STOCK_CATALOG).filter(s =>
         s.symbol.toLowerCase().includes(q) ||
         s.name.toLowerCase().includes(q) ||
         s.cnName.toLowerCase().includes(q) ||
         s.sector.toLowerCase().includes(q)
-      ).slice(0, 8);
+      ).slice(0, 6);
 
+      const localSyms = new Set(matches.map(s => s.symbol));
       const upperQ = query.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
-      const exactExists = Boolean(STOCK_CATALOG[upperQ]);
+      let html = '';
 
-      let html = matches.map(s => {
-        const inList = state.watchlist.includes(s.symbol);
-        return `
-          <button type="button" data-search-add="${s.symbol}" class="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-bold font-mono text-xs sm:text-sm">${s.symbol}</span>
-                <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${s.cnName} · ${s.name}</span>
+      if (matches.length > 0) {
+        html += `<div class="px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-slate-50/80 dark:bg-slate-800/50">本地标的库</div>`;
+        html += matches.map(s => {
+          const inList = state.watchlist.includes(s.symbol);
+          return `
+            <button type="button" data-search-add="${escapeHtml(s.symbol)}" class="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold font-mono text-xs sm:text-sm">${escapeHtml(s.symbol)}</span>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${escapeHtml(s.cnName)} · ${escapeHtml(s.name)}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(s.exchange)} · ${escapeHtml(s.sector)} · 现价 $${s.price.toFixed(2)}</div>
               </div>
-              <div class="text-[10px] text-slate-400 mt-0.5">${s.exchange} · ${s.sector} · 现价 $${s.price.toFixed(2)}</div>
-            </div>
-            <span class="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium ${inList ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-blue-600 text-white'}">${inList ? '查看' : '+ 添加'}</span>
+              <span class="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium ${inList ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-blue-600 text-white'}">${inList ? '查看' : '+ 添加'}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      if (isLiveSearchEnabled()) {
+        html += `<div class="px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30 flex items-center justify-between"><span>联网全美股搜索</span><span class="font-normal">${onlineState.status === 'loading' ? '检索中...' : escapeHtml(state.apiProvider.toUpperCase())}</span></div>`;
+        if (onlineState.status === 'loading') {
+          html += `<div class="px-3.5 py-3 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2"><span class="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin inline-block"></span><span>正在联网搜索 "${escapeHtml(query.trim())}"...</span></div>`;
+        } else if (onlineState.status === 'error') {
+          html += `<div class="px-3.5 py-2.5 text-[11px] text-amber-600 dark:text-amber-400">联网搜索请求失败（${escapeHtml(onlineState.error)}），请检查右上角设置中的 Key 或代理地址。</div>`;
+        } else if (onlineState.status === 'done') {
+          const remoteOnly = onlineState.items.filter(item => !localSyms.has(item.symbol));
+          if (remoteOnly.length > 0) {
+            html += remoteOnly.map(item => {
+              const inList = state.watchlist.includes(item.symbol);
+              return `
+                <button type="button" data-search-add="${escapeHtml(item.symbol)}" class="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold font-mono text-xs sm:text-sm">${escapeHtml(item.symbol)}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">${escapeHtml(item.type)}</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${escapeHtml(item.name)}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(item.exchange)} · 点击后自动联网同步实盘数据</div>
+                  </div>
+                  <span class="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium ${inList ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-emerald-600 text-white'}">${inList ? '查看' : '+ 添加'}</span>
+                </button>
+              `;
+            }).join('');
+          } else if (matches.length === 0) {
+            html += `<div class="px-3.5 py-2.5 text-xs text-slate-400">联网未找到匹配的美股标的</div>`;
+          }
+        }
+      } else {
+        html += `
+          <button type="button" data-open-settings="1" class="w-full px-3.5 py-2 text-left bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/70 dark:hover:bg-amber-950/50 transition-colors flex items-center justify-between gap-2">
+            <span class="text-[11px] text-amber-800 dark:text-amber-300">当前为免 Key 快照模式，未开启联网搜索</span>
+            <span class="shrink-0 text-[11px] font-semibold text-blue-600 dark:text-blue-400">去设置开启 →</span>
           </button>
         `;
-      }).join('');
+      }
 
+      const exactExists = Boolean(STOCK_CATALOG[upperQ]) || onlineState.items.some(i => i.symbol === upperQ);
       if (!exactExists && upperQ.length >= 1 && upperQ.length <= 6) {
         html += `
-          <button type="button" data-search-add="${upperQ}" class="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-left bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition-colors">
+          <button type="button" data-search-add="${escapeHtml(upperQ)}" class="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-left bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition-colors">
             <div>
-              <div class="font-bold font-mono text-xs text-blue-700 dark:text-blue-300">+ 添加自定义美股代码 "${upperQ}"</div>
-              <div class="text-[10px] text-slate-500 dark:text-slate-400">加入自选并生成互动K线与估值面板</div>
+              <div class="font-bold font-mono text-xs text-blue-700 dark:text-blue-300">+ 直接添加代码 "${escapeHtml(upperQ)}"</div>
+              <div class="text-[10px] text-slate-500 dark:text-slate-400">${isLiveSearchEnabled() ? '加入自选并自动联网同步行情' : '加入自选并生成本地估算模型'}</div>
             </div>
             <span class="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium bg-blue-600 text-white">添加</span>
           </button>
         `;
       }
 
-      if (!html) {
-        html = `<div class="p-3 text-xs text-slate-400 text-center">未找到匹配标的，请输入标准美股代码（如 COST、AVGO）</div>`;
+      return html || `<div class="p-3 text-xs text-slate-400 text-center">未找到匹配标的，请输入标准美股代码（如 COST、AVGO）</div>`;
+    }
+
+    function renderSearchDropdown(query) {
+      const dropdown = document.getElementById('searchDropdown');
+      const trimmed = query.trim();
+      clearTimeout(searchDebounceTimer);
+      if (searchAbortController) {
+        searchAbortController.abort();
+        searchAbortController = null;
       }
 
-      dropdown.innerHTML = html;
+      if (!trimmed) {
+        dropdown.classList.add('hidden');
+        return;
+      }
+
+      const liveEnabled = isLiveSearchEnabled();
+      dropdown.innerHTML = buildDropdownMarkup(trimmed, { status: liveEnabled ? 'loading' : 'idle', items: [], error: '' });
       dropdown.classList.remove('hidden');
+
+      if (!liveEnabled) return;
+
+      const reqId = ++searchRequestId;
+      searchDebounceTimer = setTimeout(async () => {
+        const controller = new AbortController();
+        searchAbortController = controller;
+        try {
+          const items = await fetchOnlineSearchResults(trimmed, controller.signal);
+          if (reqId !== searchRequestId) return;
+          dropdown.innerHTML = buildDropdownMarkup(trimmed, { status: 'done', items, error: '' });
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          if (reqId !== searchRequestId) return;
+          dropdown.innerHTML = buildDropdownMarkup(trimmed, { status: 'error', items: [], error: err ? err.message : '网络异常' });
+        }
+      }, 320);
     }
 
     function closeSearchDropdown() {
@@ -1741,8 +2273,18 @@
       clearBtn.addEventListener('click', closeSearchDropdown);
 
       document.getElementById('searchDropdown').addEventListener('click', (e) => {
+        const openSettings = e.target.closest('[data-open-settings]');
+        if (openSettings) {
+          closeSearchDropdown();
+          document.getElementById('openSettingsBtn').click();
+          return;
+        }
         const btn = e.target.closest('[data-search-add]');
         if (btn) addToWatchlist(btn.dataset.searchAdd);
+      });
+
+      document.getElementById('searchModeBadge').addEventListener('click', () => {
+        document.getElementById('openSettingsBtn').click();
       });
 
       document.getElementById('quickAddRow').addEventListener('click', (e) => {
@@ -1763,6 +2305,9 @@
           state.selectedSymbol = row.dataset.selectSymbol;
           saveState();
           renderAll();
+          if (isLiveSearchEnabled() && STOCK_CATALOG[state.selectedSymbol] && !STOCK_CATALOG[state.selectedSymbol].hydratedLive) {
+            hydrateStockData(state.selectedSymbol);
+          }
           if (window.innerWidth < 1024) {
             document.getElementById('watchlistSidebar').classList.add('hidden');
           }
@@ -1825,27 +2370,53 @@
       const providerSel = document.getElementById('apiProviderSelect');
       const keyWrap = document.getElementById('apiKeyInputWrap');
       const keyInput = document.getElementById('apiKeyInput');
+      const keyHint = document.getElementById('apiKeyHint');
+      const proxyWrap = document.getElementById('proxyUrlInputWrap');
+      const proxyInput = document.getElementById('proxyUrlInput');
 
       const syncModalUI = () => {
-        keyWrap.classList.toggle('hidden', providerSel.value === 'snapshot');
+        const p = providerSel.value;
+        keyWrap.classList.toggle('hidden', p !== 'finnhub' && p !== 'twelvedata');
+        proxyWrap.classList.toggle('hidden', p !== 'proxy');
+        if (p === 'finnhub') {
+          keyHint.textContent = 'Finnhub 免费 Key 支持全美股联网搜索、实时报价与 TTM 财报指标（EPS/PE/市值/52周区间）。';
+        } else if (p === 'twelvedata') {
+          keyHint.textContent = 'Twelve Data 免费 Key 支持全美股联网搜索、实时报价与真实 5 年历史日 K 线。';
+        }
       };
 
       document.getElementById('openSettingsBtn').addEventListener('click', () => {
         providerSel.value = state.apiProvider;
         keyInput.value = state.apiKey;
+        proxyInput.value = state.proxyUrl || '';
         syncModalUI();
         modal.classList.remove('hidden');
       });
       providerSel.addEventListener('change', syncModalUI);
+      document.getElementById('copyWorkerCodeBtn').addEventListener('click', () => {
+        copyTextToClipboard(WORKER_PROXY_TEMPLATE)
+          .then(() => showToast('已复制 Cloudflare Worker 代理脚本到剪贴板'))
+          .catch(() => showToast('复制失败，请检查浏览器剪贴板权限'));
+      });
       document.getElementById('closeSettingsBtn').addEventListener('click', () => modal.classList.add('hidden'));
       document.getElementById('cancelSettingsBtn').addEventListener('click', () => modal.classList.add('hidden'));
       document.getElementById('saveSettingsBtn').addEventListener('click', () => {
-        state.apiProvider = providerSel.value;
+        const nextProvider = providerSel.value;
+        const nextProxy = proxyInput.value.trim();
+        if (nextProvider === 'proxy' && nextProxy && !/^https:\/\//i.test(nextProxy)) {
+          showToast('代理地址必须以 https:// 开头');
+          return;
+        }
+        state.apiProvider = nextProvider;
         state.apiKey = keyInput.value.trim();
+        state.proxyUrl = nextProxy;
         saveState();
         modal.classList.add('hidden');
         updateSessionIndicator();
         refreshPrices(false);
+        if (isLiveSearchEnabled() && STOCK_CATALOG[state.selectedSymbol] && !STOCK_CATALOG[state.selectedSymbol].hydratedLive) {
+          hydrateStockData(state.selectedSymbol);
+        }
       });
 
       // Close dropdown when clicking outside
